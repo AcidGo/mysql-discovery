@@ -42,21 +42,34 @@ class MySQLDiscovery(object):
     def __init__(self, pid):
         self.pid = int(pid)
         self.res = Result()
+        self._is_docker = False
 
         if not self.pid and self.pid < 1:
             raise Exception("")
 
+        self._docker_process()
+
     def get_res(self):
         return self.res
 
+    def _docker_process(self):
+        if LinuxLib.is_docker_proc(self.pid):
+            self._is_docker = True
+            self.res.set_val("__inner__", "is_docker", True)
+
     def scan_mysql_os(self):
+        if self._is_docker:
+            return 
+
         typ = "OS"
         self.res.set_val(typ, "system", platform.system())
         self.res.set_val(typ, "platform", platform.platform())
 
     def scan_mysql_base(self):
-        typ = "Base"
+        if self._is_docker:
+            return 
 
+        typ = "Base"
         conf_path = MySQLLib.find_mysqld_confpath(self.pid)
         exec_path = MySQLLib.find_mysqld_execpath(self.pid)
         mysqld_version = MySQLLib.get_mysqld_version(exec_path)
@@ -66,6 +79,9 @@ class MySQLDiscovery(object):
         self.res.set_val(typ, "mysqld_version", mysqld_version)
 
     def scan_mysql_conf(self):
+        if self._is_docker:
+            return 
+
         typ = "Conf"
         conf_path = MySQLLib.find_mysqld_confpath(self.pid)
 
@@ -91,6 +107,21 @@ class LinuxLib(object):
     @staticmethod
     def get_exe_by_pid(pid):
         return LinuxLib._get_proctype_by_pid("exe", pid)
+
+    @staticmethod
+    def is_docker_proc(pid):
+        target = "/proc/{!s}/cgroup".format(pid)
+        if not os.path.isfile(target):
+            return False
+
+        tmp = []
+        with open(target, "r") as f:
+            tmp = [line for line in f]
+        for l in tmp:
+            if "docker" in l:
+                return True
+
+        return False
 
 class MySQLLib(object):
     @staticmethod
@@ -155,7 +186,8 @@ class MySQLLib(object):
         if not res:
             for f in cnf_lst:
                 if os.path.isfile(f):
-                    return res
+                    res = f
+                    break
 
         return res
 
