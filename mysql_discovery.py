@@ -110,6 +110,10 @@ class MySQLLib(object):
     @staticmethod
     def get_mysqld_confargs(ini_path):
         res = {}
+
+        if not os.path.isfile(ini_path):
+            return res
+
         cp = SafeConfigParser(allow_no_value = True)
         cp.read(ini_path)
         for i in cp.items("mysqld"):
@@ -136,11 +140,23 @@ class MySQLLib(object):
 
     @staticmethod
     def find_mysqld_confpath(mysqld_pid):
+        cnf_lst = [
+            "/etc/my.cnf", 
+            "/etc/mysql/my.cnf", 
+            "/usr/local/mysql/etc/my.cnf", 
+            "~/.my.cnf", 
+        ]
         res = ""
         for i in psutil.Process(mysqld_pid).cmdline()[1:]:
             if not i.startswith("--defaults-file"):
                 continue
             res = i.split("=", 1)[1]
+
+        if not res:
+            for f in cnf_lst:
+                if os.path.isfile(f):
+                    return res
+
         return res
 
     @staticmethod
