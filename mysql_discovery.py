@@ -2,12 +2,20 @@
 
 # Author: AcidGo
 
-
+import json
+import os
 import platform
+import subprocess
+from ConfigParser import SafeConfigParser
+
+import psutil
 
 class Result(object):
     def __init__(self):
         self._res = dict()
+
+    def get_res(self):
+        return self._res
 
     def set_val(self, typ, key, val):
         if typ not in self._res:
@@ -38,6 +46,9 @@ class MySQLDiscovery(object):
         if not self.pid and self.pid < 1:
             raise Exception("")
 
+    def get_res(self):
+        return self.res
+
     def scan_mysql_os(self):
         typ = "OS"
         self.res.set_val(typ, "system", platform.system())
@@ -61,7 +72,7 @@ class MySQLDiscovery(object):
         conf_dict = MySQLLib.get_mysqld_confargs(conf_path)
         cmdargs_dict = MySQLLib.get_mysqld_cmdargs(self.pid)
         conf_dict.update(cmdargs_dict)
-        self.res.set_typ(conf_dict)
+        self.res.set_typ(typ, conf_dict)
 
 class LinuxLib(object):
     @staticmethod
@@ -84,9 +95,10 @@ class LinuxLib(object):
 class MySQLLib(object):
     @staticmethod
     def list_mysql_pids():
+        process_name = "mysqld"
         pids = set()
         for proc in psutil.process_iter():
-            if process_name in proc.name():
+            if process_name == proc.name():
                 pids.add(proc.pid)
         return list(pids)
 
@@ -98,7 +110,7 @@ class MySQLLib(object):
     @staticmethod
     def get_mysqld_confargs(ini_path):
         res = {}
-        cp = ConfigParser.SafeConfigParser(allow_no_value = True)
+        cp = SafeConfigParser(allow_no_value = True)
         cp.read(ini_path)
         for i in cp.items("mysqld"):
             res[i[0]] = i[1]
@@ -134,3 +146,21 @@ class MySQLLib(object):
     @staticmethod
     def find_mysqld_execpath(mysqld_pid):
         return LinuxLib.get_exe_by_pid(mysqld_pid)
+
+def execute():
+    res = {}
+    pids = MySQLLib.list_mysql_pids()
+    coll = {p: MySQLDiscovery(p) for p in pids}
+
+    for p in coll:
+        coll[p].scan_mysql_os()
+        coll[p].scan_mysql_base()
+        coll[p].scan_mysql_conf()
+
+    for p in coll:
+        res[p] = coll[p].get_res().get_res()
+
+    print(json.dumps(res ,ensure_ascii=False))
+
+if __name__ == "__main__":
+    execute()
